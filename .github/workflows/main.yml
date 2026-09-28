@@ -1,0 +1,70 @@
+name: Torrent 7z Split Upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      MAGNET:
+        description: "Magnet link"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2 p7zip-full gh
+
+      - name: Download torrent with aria2 + 7z split
+        run: |
+          set -e
+
+          MAGNET="${{ github.event.inputs.MAGNET }}"
+
+          mkdir -p parts
+          cd parts
+
+          echo "🚀 Downloading torrent with aria2..."
+
+          aria2c "$MAGNET" \
+            --seed-time=0 \
+            --max-connection-per-server=16 \
+            --split=16 \
+            --bt-tracker="udp://tracker.opentrackr.org:1337/announce,udp://open.demonii.com:1337/announce,udp://open.stealth.si:80/announce,udp://wepzone.net:6969/announce,udp://tracker.tryhackx.org:6969/announce,udp://tracker.torrent.eu.org:451/announce,udp://tracker.srv00.com:6969/announce,udp://tracker.qu.ax:6969/announce,udp://tracker.gmi.gd:6969/announce,udp://tracker.fnix.net:6969/announce,udp://tracker.corpscorp.online:80/announce,udp://tracker.bittor.pw:1337/announce,udp://tracker.004430.xyz:1337/announce,udp://tracker-udp.gbitt.info:80/announce,udp://t.overflow.biz:6969/announce,udp://martin-gebhardt.eu:25/announce,udp://leet-tracker.moe:1337/announce,udp://ipv4announce.sktorrent.eu:6969/announce,udp://evan.im:6969/announce,udp://bittorrent-tracker.e-n-c-r-y-p-t.net:1337/announce"
+
+          echo "📂 Files downloaded:"
+          ls -lh
+
+          echo "🗜️ Creating 7z split archive..."
+          FILE=$(ls | head -n 1)
+          7z a -v1g archive.7z "$FILE"
+
+          echo "✅ Done:"
+          ls -lh
+
+      - name: Create Release
+        run: |
+          gh release create "run-${{ github.run_id }}" \
+            --title "Run ${{ github.run_id }}" \
+            --notes "aria2 + 7z split upload"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Parts
+        run: |
+          cd parts
+          for FILE in archive.7z.*; do
+            echo "📤 Uploading $FILE"
+            gh release upload "run-${{ github.run_id }}" "$FILE" --clobber
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
