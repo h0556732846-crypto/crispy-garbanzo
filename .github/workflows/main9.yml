@@ -1,0 +1,24 @@
+name: Check Disk Usage
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check disk usage
+        run: |
+          echo "=========================================="
+          echo "TOP DIRECTORIES"
+          echo "=========================================="
+
+          sudo du -xhd1 / 2>/dev/null | sort -h
+
+          echo ""
+          echo "=========================================="
+          echo "LARGEST DIRECTORIES"
+          echo "=========================================="
+
+          sudo du -xhd1 /usr /opt /home /var 2>/dev/null | sort -h
