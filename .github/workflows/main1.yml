@@ -1,0 +1,50 @@
+name: Search The Pirate Bay
+
+on:
+  workflow_dispatch:
+    inputs:
+      query:
+        description: 'Search query for The Pirate Bay'
+        required: true
+        default: 'public domain movies'
+
+jobs:
+  search-torrents:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pirate-get
+
+      - name: Run Pirate Bay Search Script
+        run: |
+          mkdir -p output
+          pirate-get "${{ github.event.inputs.query }}" -j -a > output/results.json
+
+      - name: Generate tag name
+        id: tag
+        run: |
+          TAG="results-$(date +'%Y%m%d-%H%M%S')"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Pirate Bay Search Results
+          files: output/results.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
