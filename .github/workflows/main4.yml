@@ -1,5 +1,5 @@
 
-name: Check Disk Space
+name: Clean GitHub Runner
 
 on:
   workflow_dispatch:
@@ -8,34 +8,97 @@ permissions:
   contents: read
 
 jobs:
-  check:
+  cleanup:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check disk space
+
+      - name: Show disk before cleanup
         run: |
           echo "=========================================="
-          echo "DISK SPACE"
+          echo "DISK BEFORE CLEANUP"
+          echo "=========================================="
+          df -h /
+
+      - name: Remove unnecessary large software
+        run: |
+          set +e
+
+          echo "=========================================="
+          echo "REMOVING UNNECESSARY SOFTWARE"
+          echo "=========================================="
+
+          # Android SDK
+          sudo rm -rf /usr/local/lib/android
+
+          # .NET SDK
+          sudo rm -rf /usr/share/dotnet
+
+          # Haskell/GHC
+          sudo rm -rf /opt/ghc
+
+          # Azure CLI
+          sudo rm -rf /opt/az
+
+          # PowerShell
+          sudo rm -rf /usr/local/share/powershell
+
+          # Chromium
+          sudo rm -rf /usr/local/share/chromium
+
+          # AWS CLI
+          sudo rm -rf /usr/local/aws-cli
+
+          # Large cached toolchains
+          sudo rm -rf /opt/hostedtoolcache
+
+          # Docker unused images/containers
+          sudo docker system prune -af
+
+          # APT cache
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+
+          # Temporary files
+          sudo rm -rf /tmp/*
+          sudo rm -rf /var/tmp/*
+
+          true
+
+      - name: Clean package caches
+        run: |
+          set +e
+
+          sudo journalctl --vacuum-time=1d || true
+
+          sudo find /var/cache -type f -delete 2>/dev/null || true
+
+          sudo find /var/log \
+            -type f \
+            -name "*.log" \
+            -delete 2>/dev/null || true
+
+          true
+
+      - name: Show disk after cleanup
+        run: |
+          echo "=========================================="
+          echo "DISK AFTER CLEANUP"
           echo "=========================================="
 
           df -h /
 
           echo ""
           echo "=========================================="
-          echo "FREE SPACE"
+          echo "SPACE BY MAIN DIRECTORIES"
           echo "=========================================="
 
-          df -BG / | tail -1
-
-          echo ""
-          echo "=========================================="
-          echo "DISK USAGE BY MAIN DIRECTORIES"
-          echo "=========================================="
-
-          sudo du -xhd1 / 2>/dev/null | sort -h
+          sudo du -sh /home 2>/dev/null || true
+          sudo du -sh /opt 2>/dev/null || true
+          sudo du -sh /var 2>/dev/null || true
+          sudo du -sh /usr 2>/dev/null || true
 
           echo ""
           echo "=========================================="
-          echo "CHECK COMPLETE"
+          echo "CLEANUP COMPLETE"
           echo "=========================================="
-
