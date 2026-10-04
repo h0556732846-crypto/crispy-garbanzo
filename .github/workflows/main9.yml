@@ -1,24 +1,33 @@
-name: Check Disk Usage
+
+name: Check Disk Space Only
 
 on:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   check:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check disk usage
+      - name: Check disk space
         run: |
           echo "=========================================="
-          echo "TOP DIRECTORIES"
+          echo "DISK SPACE"
           echo "=========================================="
 
-          sudo du -xhd1 / 2>/dev/null | sort -h
+          df -h /
 
           echo ""
           echo "=========================================="
-          echo "LARGEST DIRECTORIES"
+          echo "FREE SPACE"
           echo "=========================================="
 
-          sudo du -xhd1 /usr /opt /home /var 2>/dev/null | sort -h
+          df -BG / | tail -1
+
+          echo ""
+          echo "=========================================="
+          echo "CHECK COMPLETE"
+          echo "=========================================="
