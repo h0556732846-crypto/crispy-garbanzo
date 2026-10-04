@@ -1,3 +1,4 @@
+
 name: Torrent 7z Split Upload
 
 on:
@@ -16,82 +17,261 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install tools
+      - name: Clean runner and install tools
         run: |
+          set -e
+
+          echo "=========================================="
+          echo "DISK SPACE BEFORE CLEANUP"
+          echo "=========================================="
+          df -h /
+
+          echo "Cleaning unnecessary packages..."
+
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /opt/hostedtoolcache || true
+          sudo rm -rf /usr/local/share/powershell || true
+          sudo rm -rf /usr/local/share/chromium || true
+          sudo rm -rf /opt/az || true
+          sudo rm -rf /usr/local/aws-cli || true
+
+          sudo docker system prune -af || true
+
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+
+          echo "=========================================="
+          echo "DISK SPACE AFTER CLEANUP"
+          echo "=========================================="
+          df -h /
+
           sudo apt-get update
           sudo apt-get install -y aria2 p7zip-full gh
 
-      - name: Download torrent and create split 7z
+          echo "=========================================="
+          echo "FINAL DISK SPACE"
+          echo "=========================================="
+          df -h /
+
+      - name: Download torrent
         run: |
-          set -e
+          set -euo pipefail
 
           MAGNET="${{ github.event.inputs.MAGNET }}"
 
           mkdir -p parts
+
           cd parts
 
-          echo "🚀 Downloading torrent..."
+          echo "=========================================="
+          echo "STARTING TORRENT DOWNLOAD"
+          echo "=========================================="
 
           aria2c "$MAGNET" \
             --seed-time=0 \
             --max-connection-per-server=16 \
             --split=16 \
             --file-allocation=none \
-            --bt-tracker="udp://tracker.opentrackr.org:1337/announce,udp://open.demonii.com:1337/announce,udp://open.stealth.si:80/announce,udp://wepzone.net:6969/announce,udp://tracker.tryhackx.org:6969/announce,udp://tracker.torrent.eu.org:451/announce,udp://tracker.srv00.com:6969/announce,udp://tracker.qu.ax:6969/announce,udp://tracker.gmi.gd:6969/announce,udp://tracker.fnix.net:6969/announce,udp://tracker.corpscorp.online:80/announce,udp://tracker.bittor.pw:1337/announce,udp://tracker.004430.xyz:1337/announce,udp://tracker-udp.gbitt.info:80/announce,udp://t.overflow.biz:6969/announce,udp://martin-gebhardt.eu:25/announce,udp://leet-tracker.moe:1337/announce,udp://ipv4announce.sktorrent.eu:6969/announce,udp://evan.im:6969/announce,udp://bittorrent-tracker.e-n-c-r-y-p-t.net:1337/announce"
+            --continue=true \
+            --summary-interval=10 \
+            --bt-enable-lpd=true \
+            --enable-peer-exchange=true \
+            --follow-torrent=true \
+            --follow-metalink=true
 
-          echo "📂 Downloaded files:"
-          ls -lh
+          echo ""
+          echo "=========================================="
+          echo "DOWNLOAD FINISHED"
+          echo "=========================================="
 
-          echo "💾 Disk space:"
-          df -h .
+          echo "All downloaded files:"
+          find . -type f \
+            ! -name '*.aria2' \
+            ! -name '*.torrent' \
+            -printf '%p %k KB\n'
 
-          FILE=$(find . -maxdepth 1 -type f | head -n 1)
+          echo ""
+          echo "Disk space:"
+          df -h /
+
+      - name: Find downloaded file
+        run: |
+          set -euo pipefail
+
+          cd parts
+
+          FILE=$(find . -type f \
+            ! -name '*.aria2' \
+            ! -name '*.torrent' \
+            | head -n 1)
 
           if [ -z "$FILE" ]; then
             echo "❌ No downloaded file found"
+            echo ""
+            echo "Directory tree:"
+            find . -maxdepth 5 -print
             exit 1
           fi
 
-          echo "📦 Creating 1GB split 7z archive..."
-          echo "Input: $FILE"
+          echo "FOUND_FILE=$PWD/$FILE" >> "$GITHUB_ENV"
+
+          echo "=========================================="
+          echo "DOWNLOADED FILE FOUND"
+          echo "=========================================="
+          echo "$PWD/$FILE"
+
+          echo ""
+          echo "File size:"
+          du -h "$FILE"
+
+      - name: Check disk space before 7z
+        run: |
+          set -e
+
+          echo "=========================================="
+          echo "DISK SPACE BEFORE 7z"
+          echo "=========================================="
+
+          df -h /
+
+          FILE="$FOUND_FILE"
+
+          FILE_BYTES=$(stat -c%s "$FILE")
+          FREE_BYTES=$(df -B1 / | awk 'NR==2 {print $4}')
+
+          echo "File size: $FILE_BYTES bytes"
+          echo "Free space: $FREE_BYTES bytes"
+
+          # Require approximately 1.15x the input size
+          REQUIRED=$((FILE_BYTES + FILE_BYTES / 10))
+
+          echo "Required minimum: approximately $REQUIRED bytes"
+
+          if [ "$FREE_BYTES" -lt "$REQUIRED" ]; then
+            echo ""
+            echo "❌ NOT ENOUGH DISK SPACE"
+            echo ""
+            echo "The torrent is downloaded, but there is not enough"
+            echo "space to create the 7z archive."
+            echo ""
+            echo "File:"
+            du -h "$FILE"
+            echo ""
+            echo "Free:"
+            df -h /
+            exit 1
+          fi
+
+          echo "✅ Enough disk space for 7z"
+
+      - name: Create 1GB split 7z
+        run: |
+          set -euo pipefail
+
+          FILE="$FOUND_FILE"
+
+          cd "$(dirname "$FILE")"
+
+          echo "=========================================="
+          echo "CREATING 1GB SPLIT 7z"
+          echo "=========================================="
+
+          echo "Input:"
+          echo "$FILE"
+
+          echo ""
+          echo "Archive settings:"
+          echo "Split size: 1GB"
+          echo "Compression: Store (-mx=0)"
+          echo "Threads: 2"
 
           7z a \
+            archive.7z \
+            "$FILE" \
             -v1g \
             -mx=0 \
-            -mmt=2 \
-            archive.7z "$FILE"
+            -mmt=2
 
-          echo "🗑️ Removing original file..."
-          rm -f "$FILE"
+          echo ""
+          echo "=========================================="
+          echo "7z CREATION FINISHED"
+          echo "=========================================="
 
-          echo "✅ Archive created:"
           ls -lh archive.7z.*
 
-          echo "💾 Remaining disk space:"
-          df -h .
+          echo ""
+          echo "Removing original file..."
 
-      - name: Create Release
+          rm -f "$FILE"
+
+          echo ""
+          echo "=========================================="
+          echo "FINAL ARCHIVE PARTS"
+          echo "=========================================="
+
+          ls -lh archive.7z.*
+
+          echo ""
+          echo "Remaining disk space:"
+          df -h /
+
+      - name: Create GitHub Release
         run: |
-          gh release create "run-${{ github.run_id }}" \
-            --title "Run ${{ github.run_id }}" \
-            --notes "Torrent downloaded and split into 1GB 7z parts"
+          set -e
+
+          gh release create \
+            "run-${{ github.run_id }}" \
+            --title "Torrent 7z - Run ${{ github.run_id }}" \
+            --notes "Torrent downloaded and split into 1GB 7z parts."
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Parts
+      - name: Upload 7z parts
         run: |
+          set -euo pipefail
+
           cd parts
 
+          echo "=========================================="
+          echo "UPLOADING 7z PARTS"
+          echo "=========================================="
+
+          COUNT=0
+
           for FILE in archive.7z.*; do
-            echo "📤 Uploading $FILE"
+
+            if [ ! -f "$FILE" ]; then
+              continue
+            fi
+
+            COUNT=$((COUNT + 1))
+
+            echo ""
+            echo "------------------------------------------"
+            echo "Uploading part $COUNT"
+            echo "$FILE"
+            echo "------------------------------------------"
+
             gh release upload \
               "run-${{ github.run_id }}" \
               "$FILE" \
               --clobber
+
           done
+
+          echo ""
+          echo "=========================================="
+          echo "UPLOAD FINISHED"
+          echo "=========================================="
+
+          echo "Uploaded parts: $COUNT"
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
