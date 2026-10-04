@@ -1,13 +1,8 @@
-
-name: Check Disk And Download
+```yaml
+name: Check Disk Space
 
 on:
   workflow_dispatch:
-    inputs:
-      MAGNET:
-        description: "Magnet link"
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -17,80 +12,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install aria2
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y aria2
-
-      - name: Check disk BEFORE download
+      - name: Check disk space
         run: |
           echo "=========================================="
-          echo "DISK SPACE BEFORE DOWNLOAD"
-          echo "=========================================="
-
-          df -h /
-
-          echo ""
-          echo "Detailed:"
-          df -BG /
-
-      - name: Download torrent
-        run: |
-          set -euo pipefail
-
-          mkdir -p parts
-          cd parts
-
-          MAGNET="${{ github.event.inputs.MAGNET }}"
-
-          echo "=========================================="
-          echo "STARTING TORRENT"
-          echo "=========================================="
-
-          aria2c "$MAGNET" \
-            --seed-time=0 \
-            --max-connection-per-server=16 \
-            --split=16 \
-            --file-allocation=none \
-            --continue=true \
-            --summary-interval=10
-
-          echo ""
-          echo "=========================================="
-          echo "DOWNLOAD FINISHED"
-          echo "=========================================="
-
-      - name: Check downloaded files
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "DOWNLOADED FILES"
-          echo "=========================================="
-
-          echo ""
-          echo "File list:"
-          find parts -type f \
-            ! -name "*.aria2" \
-            ! -name "*.torrent" \
-            -exec ls -lh {} \;
-
-          echo ""
-          echo "Total downloaded size:"
-          du -sh parts
-
-          echo ""
-          echo "Detailed sizes:"
-          du -h parts/* 2>/dev/null || true
-
-      - name: Check disk AFTER download
-        run: |
-          echo "=========================================="
-          echo "DISK SPACE AFTER DOWNLOAD"
+          echo "DISK SPACE"
           echo "=========================================="
 
           df -h /
@@ -104,16 +29,13 @@ jobs:
 
           echo ""
           echo "=========================================="
-          echo "LARGEST FILES"
+          echo "DISK USAGE BY MAIN DIRECTORIES"
           echo "=========================================="
 
-          find parts -type f -printf "%s %p\n" 2>/dev/null \
-            | sort -nr \
-            | head -20 \
-            | numfmt --field=1 --to=iec
+          sudo du -xhd1 / 2>/dev/null | sort -h
 
           echo ""
           echo "=========================================="
           echo "CHECK COMPLETE"
           echo "=========================================="
-
+```
