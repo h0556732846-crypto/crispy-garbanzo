@@ -1,8 +1,12 @@
-
-name: Create 7z Split Parts
+name: Torrent 7z Split Upload
 
 on:
   workflow_dispatch:
+    inputs:
+      MAGNET:
+        description: "Magnet link"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -18,62 +22,98 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y p7zip-full gh
+          sudo apt-get install -y aria2 p7zip-full gh
 
-      - name: Find existing downloaded file
+      - name: Download and create split 7z
         run: |
           set -e
 
-          echo "=========================================="
-          echo "SEARCHING FOR EXISTING FILE"
-          echo "=========================================="
+          MAGNET="${{ github.event.inputs.MAGNET }}"
 
+          rm -rf parts
           mkdir -p parts
+          cd parts
 
-          echo "📂 Current files:"
-          find parts -type f -printf '%s bytes  %p\n' | sort -nr || true
+          echo "=========================================="
+          echo "🚀 DOWNLOADING"
+          echo "=========================================="
 
-          FILE=$(find parts -type f -size +100M -printf '%s %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)
+          aria2c "$MAGNET" \
+            --seed-time=0 \
+            --max-connection-per-server=16 \
+            --split=16 \
+            --file-allocation=none \
+            --bt-tracker="udp://tracker.opentrackr.org:1337/announce,udp://open.demonii.com:1337/announce,udp://open.stealth.si:80/announce,udp://wepzone.net:6969/announce,udp://tracker.tryhackx.org:6969/announce,udp://tracker.torrent.eu.org:451/announce,udp://tracker.srv00.com:6969/announce,udp://tracker.qu.ax:6969/announce,udp://tracker.gmi.gd:6969/announce,udp://tracker.fnix.net:6969/announce,udp://tracker.corpscorp.online:80/announce,udp://tracker.bittor.pw:1337/announce,udp://tracker.004430.xyz:1337/announce,udp://tracker-udp.gbitt.info:80/announce"
 
-          if [ -z "$FILE" ]; then
-            echo "❌ No existing downloaded file found"
-            echo "Nothing will be downloaded."
-            exit 1
-          fi
+          echo "=========================================="
+          echo "📂 DOWNLOADED FILES"
+          echo "=========================================="
 
-          echo "✅ Existing file found:"
-          echo "$FILE"
+          find . -type f -printf '%s bytes  %p\n' | sort -nr || true
 
-          echo "💾 Disk space:"
+          echo "=========================================="
+          echo "💾 DISK SPACE"
+          echo "=========================================="
+
           df -h .
 
           echo "=========================================="
-          echo "CREATING 1GB 7z PARTS"
+          echo "🔎 FINDING DOWNLOADED FILE"
+          echo "=========================================="
+
+          FILE=$(find . -type f -size +100M -printf '%s %p\n' \
+            | sort -nr \
+            | head -n 1 \
+            | cut -d' ' -f2-)
+
+          if [ -z "$FILE" ]; then
+            echo "❌ No downloaded file found"
+            echo "Full directory listing:"
+            find . -maxdepth 5 -print
+            exit 1
+          fi
+
+          echo "✅ Downloaded file found:"
+          echo "$FILE"
+
+          FILE_SIZE=$(du -h "$FILE" | cut -f1)
+          echo "📦 File size: $FILE_SIZE"
+
+          echo "=========================================="
+          echo "📦 CREATING 1GB 7z PARTS"
           echo "=========================================="
 
           7z a \
             -v1g \
             -mx=0 \
             -mmt=2 \
-            parts/archive.7z "$FILE"
+            archive.7z "$FILE"
 
-          echo "🗑️ Removing original file..."
+          echo "=========================================="
+          echo "🗑️ REMOVING ORIGINAL FILE"
+          echo "=========================================="
+
           rm -f "$FILE"
 
           echo "=========================================="
-          echo "CREATED PARTS"
+          echo "✅ CREATED PARTS"
           echo "=========================================="
 
-          ls -lh parts/archive.7z.*
+          ls -lh archive.7z.*
 
-          echo "💾 Remaining disk space:"
+          echo "=========================================="
+          echo "💾 REMAINING DISK SPACE"
+          echo "=========================================="
+
           df -h .
 
       - name: Create Release
         run: |
+          set -e
+
           gh release create "run-${{ github.run_id }}" \
             --title "Run ${{ github.run_id }}" \
-            --notes "Existing file split into 1GB 7z parts"
+            --notes "Downloaded file split into 1GB 7z parts"
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -84,14 +124,24 @@ jobs:
 
           cd parts
 
-          for FILE in archive.7z.*; do
-            echo "📤 Uploading $FILE"
+          echo "=========================================="
+          echo "📤 UPLOADING PARTS"
+          echo "=========================================="
 
-            gh release upload \
-              "run-${{ github.run_id }}" \
-              "$FILE" \
-              --clobber
+          for FILE in archive.7z.*; do
+            if [ -f "$FILE" ]; then
+              echo "📤 Uploading: $FILE"
+
+              gh release upload \
+                "run-${{ github.run_id }}" \
+                "$FILE" \
+                --clobber
+            fi
           done
+
+          echo "=========================================="
+          echo "✅ ALL PARTS UPLOADED"
+          echo "=========================================="
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
