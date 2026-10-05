@@ -1,12 +1,8 @@
-name: Torrent 7z Split Upload
+
+name: Create 7z Split Parts
 
 on:
   workflow_dispatch:
-    inputs:
-      MAGNET:
-        description: "Magnet link"
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -22,49 +18,80 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y aria2 p7zip-full gh
+          sudo apt-get install -y p7zip-full gh
 
-      - name: Download torrent with aria2 + 7z split
+      - name: Find existing downloaded file
         run: |
           set -e
 
-          MAGNET="${{ github.event.inputs.MAGNET }}"
+          echo "=========================================="
+          echo "SEARCHING FOR EXISTING FILE"
+          echo "=========================================="
 
           mkdir -p parts
-          cd parts
 
-          echo "🚀 Downloading torrent with aria2..."
+          echo "📂 Current files:"
+          find parts -type f -printf '%s bytes  %p\n' | sort -nr || true
 
-          aria2c "$MAGNET" \
-            --seed-time=0 \
-            --max-connection-per-server=16 \
-            --split=16 \
-            --bt-tracker="udp://tracker.opentrackr.org:1337/announce,udp://open.demonii.com:1337/announce,udp://open.stealth.si:80/announce,udp://wepzone.net:6969/announce,udp://tracker.tryhackx.org:6969/announce,udp://tracker.torrent.eu.org:451/announce,udp://tracker.srv00.com:6969/announce,udp://tracker.qu.ax:6969/announce,udp://tracker.gmi.gd:6969/announce,udp://tracker.fnix.net:6969/announce,udp://tracker.corpscorp.online:80/announce,udp://tracker.bittor.pw:1337/announce,udp://tracker.004430.xyz:1337/announce,udp://tracker-udp.gbitt.info:80/announce,udp://t.overflow.biz:6969/announce,udp://martin-gebhardt.eu:25/announce,udp://leet-tracker.moe:1337/announce,udp://ipv4announce.sktorrent.eu:6969/announce,udp://evan.im:6969/announce,udp://bittorrent-tracker.e-n-c-r-y-p-t.net:1337/announce"
+          FILE=$(find parts -type f -size +100M -printf '%s %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)
 
-          echo "📂 Files downloaded:"
-          ls -lh
+          if [ -z "$FILE" ]; then
+            echo "❌ No existing downloaded file found"
+            echo "Nothing will be downloaded."
+            exit 1
+          fi
 
-          echo "🗜️ Creating 7z split archive..."
-          FILE=$(ls | head -n 1)
-          7z a -v1g archive.7z "$FILE"
+          echo "✅ Existing file found:"
+          echo "$FILE"
 
-          echo "✅ Done:"
-          ls -lh
+          echo "💾 Disk space:"
+          df -h .
+
+          echo "=========================================="
+          echo "CREATING 1GB 7z PARTS"
+          echo "=========================================="
+
+          7z a \
+            -v1g \
+            -mx=0 \
+            -mmt=2 \
+            parts/archive.7z "$FILE"
+
+          echo "🗑️ Removing original file..."
+          rm -f "$FILE"
+
+          echo "=========================================="
+          echo "CREATED PARTS"
+          echo "=========================================="
+
+          ls -lh parts/archive.7z.*
+
+          echo "💾 Remaining disk space:"
+          df -h .
 
       - name: Create Release
         run: |
           gh release create "run-${{ github.run_id }}" \
             --title "Run ${{ github.run_id }}" \
-            --notes "aria2 + 7z split upload"
+            --notes "Existing file split into 1GB 7z parts"
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Parts
         run: |
+          set -e
+
           cd parts
+
           for FILE in archive.7z.*; do
             echo "📤 Uploading $FILE"
-            gh release upload "run-${{ github.run_id }}" "$FILE" --clobber
+
+            gh release upload \
+              "run-${{ github.run_id }}" \
+              "$FILE" \
+              --clobber
           done
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
