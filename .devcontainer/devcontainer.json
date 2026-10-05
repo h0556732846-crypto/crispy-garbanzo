@@ -1,0 +1,13 @@
+{
+  "name": "Remote Chromium",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "forwardPorts": [6080],
+  "portsAttributes": {
+    "6080": {
+      "label": "Remote Browser",
+      "protocol": "http",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh"
+}
