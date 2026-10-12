@@ -3,17 +3,56 @@ name: Download OpenVPN Config
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   download:
     runs-on: ubuntu-latest
+
     steps:
       - name: Download configuration
         env:
           CONFIG_URL: ${{ secrets.OPENVPN_CONFIG_URL }}
         run: |
           set -euo pipefail
-          test -n "$CONFIG_URL"
+
+          if [ -z "$CONFIG_URL" ]; then
+            echo "::error::Missing OPENVPN_CONFIG_URL secret"
+            exit 1
+          fi
+
           curl --fail --location --silent --show-error \
-            "$CONFIG_URL" -o client.ovpn
+            "$CONFIG_URL" -o downloaded-config
+
+          test -s downloaded-config
+
+          if file downloaded-config | grep -qi 'zip archive'; then
+            mkdir -p extracted
+            unzip -o downloaded-config -d extracted
+
+            CONFIG_FILE="$(find extracted -type f -name '*.ovpn' -print -quit)"
+
+            if [ -z "$CONFIG_FILE" ]; then
+              echo "::error::No .ovpn file found in ZIP"
+              exit 1
+            fi
+
+            cp "$CONFIG_FILE" client.ovpn
+          elif [[ "$CONFIG_URL" == *.ovpn ]]; then
+            cp downloaded-config client.ovpn
+          else
+            echo "::error::Downloaded file is neither a recognized ZIP nor a direct .ovpn URL"
+            exit 1
+          fi
+
           test -s client.ovpn
           echo "Configuration downloaded successfully."
+
+      - name: Upload private workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openvpn-config
+          path: client.ovpn
+          retention-days: 1
+          if-no-files-found: error
