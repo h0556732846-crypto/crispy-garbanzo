@@ -1,0 +1,28 @@
+name: Download VPNBook Config
+
+on:
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install download tools
+        run: sudo apt-get update && sudo apt-get install -y curl unzip
+
+      - name: Download VPNBook ZIP
+        run: |
+          set -e
+          mkdir -p vpnbook-files
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://www.vpnbook.com/free-openvpn-account/vpnbook-openvpn-ca196.zip" \
+            -o vpnbook-files/vpnbook-openvpn-ca196.zip
+          file vpnbook-files/vpnbook-openvpn-ca196.zip
+          ls -lh vpnbook-files/
+
+      - name: Upload ZIP as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpnbook-openvpn-ca196
+          path: vpnbook-files/vpnbook-openvpn-ca196.zip
+          if-no-files-found: error
