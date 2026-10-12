@@ -1,0 +1,19 @@
+name: Download OpenVPN Config
+
+on:
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download configuration
+        env:
+          CONFIG_URL: ${{ secrets.OPENVPN_CONFIG_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$CONFIG_URL"
+          curl --fail --location --silent --show-error \
+            "$CONFIG_URL" -o client.ovpn
+          test -s client.ovpn
+          echo "Configuration downloaded successfully."
