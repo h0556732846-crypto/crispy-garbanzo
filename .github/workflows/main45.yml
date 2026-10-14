@@ -1,19 +1,36 @@
-name: Download OpenVPN Config
+name: Download Charles APPX to Private Release
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   download:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Download configuration
+      - name: Download APPX
         env:
-          CONFIG_URL: ${{ secrets.OPENVPN_CONFIG_URL }}
+          DOWNLOAD_URL: "https://www.charlesproxy.com/assets/release/5.2.2/charles-proxy-5.2.2-win-x86_64.appx?k=7a4b1c8dec"
         run: |
           set -euo pipefail
-          test -n "$CONFIG_URL"
-          curl --fail --location --silent --show-error \
-            "$CONFIG_URL" -o client.ovpn
-          test -s client.ovpn
-          echo "Configuration downloaded successfully."
+          curl -fL --retry 3 \
+            "$DOWNLOAD_URL" \
+            -o charles-proxy-5.2.2-win-x86_64.appx
+
+          test -s charles-proxy-5.2.2-win-x86_64.appx
+          file charles-proxy-5.2.2-win-x86_64.appx
+
+      - name: Create Private Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh release create charles-5.2.2 \
+            charles-proxy-5.2.2-win-x86_64.appx \
+            --repo "$REPO" \
+            --title "Charles Proxy 5.2.2" \
+            --notes "Downloaded from the official Charles website." \
+            --latest=false
